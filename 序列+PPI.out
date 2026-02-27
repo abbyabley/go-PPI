@@ -1,0 +1,52 @@
+✅ Valid Sequence Samples: 78951
+
+Epoch 1 | Val Micro-AUPRC: 0.4244
+🌟 New Best Model Saved! (AUPRC: 0.4244)
+
+Epoch 2 | Val Micro-AUPRC: 0.4523
+🌟 New Best Model Saved! (AUPRC: 0.4523)
+
+Epoch 3 | Val Micro-AUPRC: 0.4643
+🌟 New Best Model Saved! (AUPRC: 0.4643)
+
+Epoch 4 | Val Micro-AUPRC: 0.4687
+🌟 New Best Model Saved! (AUPRC: 0.4687)
+
+Epoch 5 | Val Micro-AUPRC: 0.4741
+🌟 New Best Model Saved! (AUPRC: 0.4741)
+
+Epoch 6 | Val Micro-AUPRC: 0.4777
+🌟 New Best Model Saved! (AUPRC: 0.4777)
+
+Epoch 7 | Val Micro-AUPRC: 0.4775
+
+Epoch 8 | Val Micro-AUPRC: 0.4724
+
+Epoch 9 | Val Micro-AUPRC: 0.4769
+
+Epoch 10 | Val Micro-AUPRC: 0.4852
+🌟 New Best Model Saved! (AUPRC: 0.4852)
+
+Epoch 11 | Val Micro-AUPRC: 0.4825
+
+Epoch 12 | Val Micro-AUPRC: 0.4880
+🌟 New Best Model Saved! (AUPRC: 0.4880)
+
+Epoch 13 | Val Micro-AUPRC: 0.4873
+
+Epoch 14 | Val Micro-AUPRC: 0.4900
+🌟 New Best Model Saved! (AUPRC: 0.4900)
+
+Epoch 15 | Val Micro-AUPRC: 0.4908
+🌟 New Best Model Saved! (AUPRC: 0.4908)
+
+Epoch 16 | Val Micro-AUPRC: 0.4839
+
+Epoch 17 | Val Micro-AUPRC: 0.4881
+
+Epoch 18 | Val Micro-AUPRC: 0.4910
+🌟 New Best Model Saved! (AUPRC: 0.4910)
+
+Epoch 19 | Val Micro-AUPRC: 0.4909
+
+Epoch 20 | Val Micro-AUPRC: 0.4904

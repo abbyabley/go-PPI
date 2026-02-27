@@ -18,7 +18,8 @@ ESM_DIR  = f'{BASE_DIR}/esm2_features'
 PPI_DIR  = f'{BASE_DIR}/ppi_prior_features_single'
 GO_MAP   = f'{BASE_DIR}/meta_data/go_mapping.pkl'
 
-BATCH_SIZE = 16
+# 🚀 优化 1：利用 A6000 庞大显存，将 Batch Size 暴增
+BATCH_SIZE = 128 
 LR = 1e-4
 EPOCHS = 20
 NUM_GO_CLASSES = 150
@@ -110,26 +111,44 @@ class SinglePPIAwareGOPredictor(nn.Module):
         )
 
     def forward(self, esm, ppi_prior, mask):
+        # 序列特征降维
         h_esm = self.esm_proj(esm) 
-        # ppi_weights = (ppi_prior * mask).unsqueeze(-1) 
-	ppi_weights = mask.unsqueeze(-1)
-        pooled_rep = (h_esm * ppi_weights).sum(dim=1) / (ppi_weights.sum(dim=1) + 1e-6) 
-        return self.classifier(pooled_rep)
+        
+        # 1. 获取全局特征 (Global Context)
+        mask_weights = mask.unsqueeze(-1)
+        global_rep = (h_esm * mask_weights).sum(dim=1) / (mask_weights.sum(dim=1) + 1e-6) 
+        
+        # 2. 获取局部互作特征 (PPI-Guided Local Focus)
+        ppi_weights = (ppi_prior * mask).unsqueeze(-1) 
+        local_rep = (h_esm * ppi_weights).sum(dim=1) / (ppi_weights.sum(dim=1) + 1e-6) 
+        
+        # 3. 融合特征：全局大局观 + 局部互作先验
+        final_rep = global_rep + local_rep
+        
+        # 4. 功能分类
+        return self.classifier(final_rep)
 
 # ----------------- 3. 训练主循环 -----------------
 def train():
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f">>> Using device: {device}")
 
     full_ds = PPIAwareGODatasetSingle(TSV_PATH, ESM_DIR, PPI_DIR, GO_MAP, num_classes=NUM_GO_CLASSES)
     train_len = int(0.9 * len(full_ds))
     train_ds, val_ds = random_split(full_ds, [train_len, len(full_ds) - train_len])
     
-    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn_single, num_workers=4)
-    val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_fn_single, num_workers=4)
+    # 🚀 优化 2：增加 num_workers 提升多线程读取速度，开启 pin_memory 加速显存拷贝
+    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, 
+                              collate_fn=collate_fn_single, num_workers=8, pin_memory=True)
+    val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, 
+                            collate_fn=collate_fn_single, num_workers=8, pin_memory=True)
 
     model = SinglePPIAwareGOPredictor(num_classes=NUM_GO_CLASSES).to(device)
     criterion = nn.BCEWithLogitsLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-2)
+    
+    # 🚀 优化 3：引入混合精度训练 (AMP) Scaler
+    scaler = torch.cuda.amp.GradScaler()
     
     best_auprc = 0.0
     
@@ -141,16 +160,24 @@ def train():
         for batch in loop:
             if batch is None: continue 
             
-            esm = batch['esm'].to(device)
-            ppi, mask = batch['ppi_prior'].to(device), batch['mask'].to(device)
-            labels = batch['go_labels'].to(device)
+            # non_blocking=True 配合 pin_memory 实现数据传输与计算并行
+            esm = batch['esm'].to(device, non_blocking=True)
+            ppi = batch['ppi_prior'].to(device, non_blocking=True)
+            mask = batch['mask'].to(device, non_blocking=True)
+            labels = batch['go_labels'].to(device, non_blocking=True)
             
             optimizer.zero_grad()
-            logits = model(esm, ppi, mask)
-            loss = criterion(logits, labels)
             
-            loss.backward()
-            optimizer.step()
+            # 使用混合精度上下文
+            with torch.cuda.amp.autocast():
+                logits = model(esm, ppi, mask)
+                loss = criterion(logits, labels)
+            
+            # Scaler 缩放梯度并反向传播
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+            
             train_loss += loss.item()
             loop.set_postfix(loss=f"{loss.item():.4f}")
 
@@ -159,13 +186,16 @@ def train():
         all_preds, all_labels = [], []
         
         with torch.no_grad():
-            for batch in val_loader:
+            for batch in tqdm(val_loader, desc=f"Ep {epoch+1}/{EPOCHS} [Val]"):
                 if batch is None: continue
-                esm = batch['esm'].to(device)
-                ppi, mask = batch['ppi_prior'].to(device), batch['mask'].to(device)
-                labels = batch['go_labels'].to(device)
+                esm = batch['esm'].to(device, non_blocking=True)
+                ppi = batch['ppi_prior'].to(device, non_blocking=True)
+                mask = batch['mask'].to(device, non_blocking=True)
+                labels = batch['go_labels'].to(device, non_blocking=True)
                 
-                logits = model(esm, ppi, mask)
+                with torch.cuda.amp.autocast():
+                    logits = model(esm, ppi, mask)
+                
                 probs = torch.sigmoid(logits)
                 all_preds.append(probs.cpu().numpy())
                 all_labels.append(labels.cpu().numpy())
@@ -181,7 +211,8 @@ def train():
         
         if auprc > best_auprc:
             best_auprc = auprc
-            torch.save(model.state_dict(), "best_go_single_predictor.pth")
+            # 保存双路融合模型的最终权重
+            torch.save(model.state_dict(), "best_go_dual_predictor.pth")
             print(f"🌟 New Best Model Saved! (AUPRC: {auprc:.4f})")
 
 if __name__ == '__main__':

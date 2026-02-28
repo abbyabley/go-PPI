@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=protformer-site           # 任务名区分开
+#SBATCH --job-name=Pro           # 任务名区分开
 #SBATCH --output=%j.out          # 日志分开存
 #SBATCH --error=%j.err
 #SBATCH --partition=gpu
@@ -12,4 +12,5 @@
 source ~/miniconda3/bin/activate esm
 
 # 运行 Python 脚本 (传入 BP 参数)
-python 03_train_dual.py
+python 03_train_go_multimodal.py --exp_name v0Pro --epochs 250
+# python 03_train_go_multimodal.py --is_baseline --exp_name v0Base --epochs 250
